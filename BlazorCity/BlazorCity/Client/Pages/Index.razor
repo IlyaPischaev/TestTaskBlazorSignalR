@@ -1,0 +1,138 @@
+﻿@page "/"
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col">
+
+            <table class="table table-striped">
+                <thead class="table-dark">
+                    <tr>
+                        <th scope="col">Название города</th>
+                        <th scope="col">Население</th>
+                        <th scope="col">Дата основания</th>
+                        <th scope="col"></th>
+                        <th scope="col"></th>
+                    </tr>
+                </thead>
+                @foreach (var item in cities)
+                {
+                    <tbody>
+                        <tr>
+                            <td>
+                                @item.CityName
+                            </td>
+                            <td>
+                                @item.CityPopulation
+                            </td>
+                            <td>
+                                @item.CityDoundationDay.@item.CityDoundationMonth.@item.CityFoundationYear
+                            </td>
+                            <td>
+                                <button class="btn btn-info" @onclick="@(() => EditCity(item.CityId))" disabled="@(!IsConnected)">Редактировать</button>
+                            </td>
+                            <td>
+                                <button class="btn btn-danger" @onclick="@(() => DeleteCity(item.CityId))" disabled="@(!IsConnected)">Удалить</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                }
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<City> cities = new List<City>();
+    private HubConnection hubConnection;
+    private string FoundationDay;
+    protected override async Task OnInitializedAsync()
+    {
+        HubConnection();
+
+        GetAllCitiesListener();
+        DeleteCityListener();
+        EditCityListener();
+        AddCityListener();
+
+        await hubConnection.StartAsync();
+
+        await GetAllCitites();
+    }
+
+    private void HubConnection()
+    {
+        hubConnection = new HubConnectionBuilder()
+        .WithUrl(NavigationManager.ToAbsoluteUri("/CityHub"))
+        .Build();
+    }
+
+    private void GetAllCitiesListener()
+    {
+        hubConnection.On<IEnumerable<City>>("ReceiveAllCities", (citiesData) =>
+        {
+            foreach (var city in citiesData)
+            {
+                cities.Add(city);
+            }
+
+            StateHasChanged();
+        });
+    }
+
+    private void DeleteCityListener()
+    {
+        hubConnection.On<int>("ReceiveDeleteCity", (cityId) =>
+        {
+            var city = cities.FirstOrDefault(c => c.CityId == cityId);
+            cities.Remove(city);
+
+            StateHasChanged();
+        });
+    }
+
+    private void EditCityListener()
+    {
+        hubConnection.On<City>("ReceiveEditCity", (cityData) =>
+        {
+            var city = cities.FirstOrDefault(c => c.CityId == cityData.CityId);
+            var index = cities.IndexOf(city);
+            cities[index] = cityData;
+
+            StateHasChanged();
+        });
+    }
+
+    private void AddCityListener()
+    {
+        hubConnection.On<City>("ReceiveAddCity", (city) =>
+        {
+            cities.Add(city);
+            StateHasChanged();
+        });
+    }
+
+    Task GetAllCitites()
+    {
+        return hubConnection.SendAsync("SendAllCities");
+    }
+
+    Task DeleteCity(int id)
+    {
+        return hubConnection.SendAsync("SendDeleteCity", id);
+    }
+
+    public bool IsConnected =>
+    hubConnection.State == HubConnectionState.Connected;
+
+    private void EditCity(int id)
+    {
+        NavigationManager.NavigateTo("/editcity/" + id);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await hubConnection.DisposeAsync();
+    }
+}
